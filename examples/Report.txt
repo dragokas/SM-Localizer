@@ -1,0 +1,67 @@
+>>>> Test #1: First run (Database)
+>>> Start processing of 174 files...
+Installation mode: DATABASE
+Connection to Steam servers successful.
+   VAC secure mode is activated.
+>> Profiler report for: Decoding (174 items, 105.4 MB), max file: 3.38 MB
+avg speed: 14.83 MB/sec.
+max time per file: 0.25 sec.
+total time elapsed: 7.10 sec.
+Performance - OK.
+>> Profiler report for: Caching (174 items, 56.0 MB), max file: 1.95 MB
+avg speed: 9.25 MB/sec.
+max time per file: 0.19 sec.
+total time elapsed: 6.05 sec.
+Performance - OK.
+>>> Phrases processing is completed.
+[Server] Loc: Multiplayer
+
+>>>> Test #2: Second run (Database)
+>>> Start processing of 174 files...
+Installation mode: DATABASE
+>> Profiler report for: Decoding (0 items, 0.0 MB), max file: 0.00 MB
+avg speed: Na MB/sec.
+max time per file: 0.00 sec.
+total time elapsed: 0.00 sec.
+>> Profiler report for: Caching (0 items, 0.0 MB), max file: 0.00 MB
+avg speed: Na MB/sec.
+max time per file: 0.00 sec.
+total time elapsed: 0.00 sec.
+>>> Phrases processing is completed.
+[Server] Loc: Multiplayer
+
+>>>> Test #3: First run (Full cache)
+>>> Start processing of 174 files...
+Installation mode: FULLCACHE
+>> Profiler report for: Decoding (174 items, 105.4 MB), max file: 3.38 MB
+avg speed: 15.07 MB/sec.
+max time per file: 0.29 sec.
+total time elapsed: 6.99 sec.
+Performance - OK.
+>> Profiler report for: Caching (174 items, 56.0 MB), max file: 1.95 MB
+avg speed: 14.73 MB/sec.
+max time per file: 0.14 sec.
+total time elapsed: 3.80 sec.
+Performance - OK.
+>>> Phrases processing is completed.
+[Server] Loc: Multiplayer
+
+>>>> Test #4: Second run (Full cache)
+>>> Start processing of 174 files...
+Installation mode: FULLCACHE
+>> Profiler report for: Decoding (0 items, 0.0 MB), max file: 0.00 MB
+avg speed: Na MB/sec.
+max time per file: 0.00 sec.
+total time elapsed: 0.00 sec.
+>> Profiler report for: Caching (174 items, 56.0 MB), max file: 1.95 MB
+avg speed: 14.96 MB/sec.
+max time per file: 0.18 sec.
+total time elapsed: 3.74 sec.
+Performance - OK.
+>>> Phrases processing is completed.
+[Server] Loc: Multiplayer
+
+>>>> Test #5: Load Translation file
+>> Profiler report for: Dumping (289795 phrases): 0.20 sec.
+>> Profiler report for: LoadTranslations: 0.32 sec.
+[Server] LoadTranslations: Multiplayer
