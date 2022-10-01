@@ -16,7 +16,7 @@
 #endif
 #define _localizer_included
 
-#define LOCALIZER_VERSION "0.92"
+#define LOCALIZER_VERSION "0.93"
 
 #include <sourcemod>
 #include <sdktools>
@@ -566,6 +566,7 @@ methodmap Localizer < Handle
 	
 	/**
 	 * Generates SM compatible translation file from all L2 (StringMap) pre-cached phrases.
+	 * Note: for convenience, translation files are also mirrored to folder: "translations/localizer/"
 	 *
 	 * @return				True if at least default server language file is successfully generated, false otherwise.
 	 *
@@ -1507,6 +1508,30 @@ void Loc_DeleteDirectory(char[] sDir)
 	RemoveDir(sDir);
 }
 
+bool Loc_CopyFile(char[] SourceFile, char[] TargetFile)
+{
+	bool result = false;
+	Handle hr = OpenFile(SourceFile, "rb", false);	
+	if( hr )
+	{
+		Handle hw = OpenFile(TargetFile, "wb", false);	
+		if( hw )
+		{
+			int bytesRead, buff[64];
+			
+			while( !IsEndOfFile(hr) )
+			{
+				bytesRead = ReadFile(hr, buff, sizeof(buff), 1);
+				WriteFile(hw, buff, bytesRead, 1);
+			}
+			delete hw;
+			result = true;
+		}
+		delete hr;
+	}
+	return result;
+}
+
 bool Loc_Dump(int lang_num, int &count = 0)
 {
 	char translation[LC_MAX_TRANSLATION_LENGTH];
@@ -1517,8 +1542,26 @@ bool Loc_Dump(int lang_num, int &count = 0)
 	
 	StringMapSnapshot hSnap = g_hMapLcPhrase[lang_num].Snapshot();
 	
+	char dumpPath[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, dumpPath, PLATFORM_MAX_PATH, "translations/localizer");
+	if( !DirExists(dumpPath) )
+	{
+		CreateDirectory(dumpPath, 0o755);
+	}
+	if( !StrEqual(code, "en") )
+	{
+		Format(dumpPath, PLATFORM_MAX_PATH, "%s/%s", dumpPath, code);
+		
+		if( !DirExists(dumpPath) )
+		{
+			CreateDirectory(dumpPath, 0o755);
+		}
+	}
+	
 	char dstFile[PLATFORM_MAX_PATH];
+	char dstDumpFile[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, dstFile, PLATFORM_MAX_PATH, "translations/%s/%s", StrEqual(code, "en") ? "" : code, LC_TRANSLATION_FILE);
+	BuildPath(Path_SM, dstDumpFile, PLATFORM_MAX_PATH, "translations/localizer/%s/%s", StrEqual(code, "en") ? "" : code, LC_TRANSLATION_FILE);
 	
 	File hFile = OpenFile(dstFile, "wt");
 	if( !hFile ) {
@@ -1548,6 +1591,8 @@ bool Loc_Dump(int lang_num, int &count = 0)
 	hFile.WriteLine("}");
 	delete hFile;
 	delete hSnap;
+	
+	Loc_CopyFile(dstFile, dstDumpFile);
 	return true;
 }
 
