@@ -16,7 +16,7 @@
 #endif
 #define _localizer_included
 
-#define LOCALIZER_VERSION "0.93"
+#define LOCALIZER_VERSION "0.94"
 
 #include <sourcemod>
 #include <sdktools>
@@ -67,7 +67,6 @@ char LC_RESOURCE_DECODED_DIR[] =	"resource/utf8";
 char LC_RESOURCE_INDEX_FILE[] =		"resource/utf8/_index.txt";
 char LC_TRANSLATION_FILE[] = 		"localizer.phrases.txt";
 #define LC_DATABASE_NAME			"localizer"
-#define LC_DATABASE_KEY				"localizer_key"
 #define LC_DATABASE_TABLE			"localizer_phrases"
 #define LC_CONVAR_NAME				"sm_localizer_inc"
 #define LC_MAX_LANG_COUNT			64
@@ -93,9 +92,11 @@ ConVar			g_hCvarLcState;
 Handle			g_hTimerLcState;
 bool			g_bLcDecodeInProgress,
 				g_bLcIndexChanged,
-				g_bLcReady;
+				g_bLcReady,
+				g_bLcProfiler;
 int				g_iLcServerLanguage,
-				g_iLcQueueTx;
+				g_iLcQueueTx,
+				g_iTotalFilesToProcess;
 LC_INSTALL_MODE g_iLcInstallMode;
 EngineVersion	g_iLcEngine;
 
@@ -475,7 +476,7 @@ methodmap Localizer < Handle
 	 * @return              True if phrase is precached, false if phrase doesn't found.
 	 *
 	 * @note	This precache is only actual for installation mode 'LC_INSTALL_MODE_DATABASE' (default).
-	 * @error	If #phrase length is <= 1.
+	 * @noerror	If #phrase length is <= 1.
 	 */
 	public bool PrecachePhrase(char[] phrase)
 	{
@@ -488,18 +489,19 @@ methodmap Localizer < Handle
 	/**
 	 * Precaches an arbitrary translation file to use it the same way if it were intrinsic translation phrases.
 	 *
-	 * @param phrase        A single #phrase.
+	 * @param file          Translation file
+	 * @param cache			Memory location where to store the cache (Database or RAM)
 	 *
-	 * @return              True if phrase is precached, false if phrase doesn't found.
+	 * @return              True if the file is precached, false if the file doesn't found.
 	 *
-	 * @note	This precache is only actual for installation mode 'LC_INSTALL_MODE_DATABASE' (default).
-	 * @error	If #phrase length is <= 1.
-	 */
+	 * @noerror
+	 
 	public bool PrecacheTranslationFile(char[] file, LC_CACHE cache = LC_CACHE_RAM)
 	{
 		
 		return true;
 	}
+	*/
 	
 	/**
 	 * Adds a new #phrase and translation.
@@ -713,6 +715,10 @@ void Loc_Init(LC_INSTALL_MODE install_mode)
 	#endif
 	*/
 	
+	#if defined LC_PROFILER
+		g_bLcProfiler = true;
+	#endif
+	
 	g_iLcInstallMode = install_mode;
 	g_iLcEngine = GetEngineVersion();
 	g_hCvarLcState = FindConVar(LC_CONVAR_NAME); // inter-plugin sync. mechanism
@@ -729,9 +735,9 @@ void Loc_Init(LC_INSTALL_MODE install_mode)
 		Loc_InitObjects();
 		if( g_hCvarLcState && g_hCvarLcState.IntValue == view_as<int>(LC_OP_STATE_WAIT) )
 		{
-			#if defined LC_PROFILER
+			if( g_bLcProfiler )
 				PrintToServer("[Localizer] [h:%i] Pausing execution", GetMyHandle());
-			#endif
+			
 			g_hCvarLcState.AddChangeHook(Loc_StateChanged);
 			Loc_SetStateWatchDog();
 		}
@@ -818,18 +824,18 @@ public void Loc_StateChanged(ConVar convar, const char[] oldValue, const char[] 
 {
 	if( view_as<LC_OP_STATE>(convar.IntValue) == LC_OP_STATE_SIGNAL )
 	{
-		#if defined LC_PROFILER
+		if( g_bLcProfiler )
 			PrintToServer("[Localizer] [h:%i] Received signal => continue execution", GetMyHandle());
-		#endif
+		
 		delete g_hTimerLcState;
 		g_hCvarLcState.RemoveChangeHook(Loc_StateChanged);
 		convar.SetInt(view_as<int>(LC_OP_STATE_WAIT));		// pause the next plugin in chain
 		Loc_StartProcessing();
 	}
 	else {
-		#if defined LC_PROFILER
+		if( g_bLcProfiler )
 			PrintToServer("[Localizer] [h:%i] Restarting Dog", GetMyHandle());
-		#endif
+		
 		Loc_SetStateWatchDog();
 	}
 }
@@ -852,7 +858,16 @@ void Loc_StartProcessing()
 {
 	CreateDirectory(LC_RESOURCE_DECODED_DIR, 0o755);
 	
-	Loc_ReadIndexFile();
+	if( !Loc_ReadIndexFile())
+	{
+		g_bLcProfiler = true;
+		PrintToChatAll(">>> [Localizer] Beginning transformation of language files...");
+		PrintToChatAll(">>> [Localizer] It may freeze the server. Don't panic!");
+		PrintToChatAll(">>> [Localizer] This is one-time procedure.");
+		PrintToServer(">>> [Localizer] Beginning transformation of language files...");
+		PrintToServer(">>> [Localizer] It may freeze the server. Don't panic!");
+		PrintToServer(">>> [Localizer] This is one-time procedure.");
+	}
 	
 	switch( g_iLcInstallMode )
 	{
@@ -908,14 +923,15 @@ void Forward_OnPhrasesProcessingCompleted()
 	
 	g_bLcReady = true;
 	
-	#if defined LC_PROFILER
+	if( g_bLcProfiler )
+	{
 		if( g_iLcInstallMode == LC_INSTALL_MODE_DATABASE )
 		{
 			g_hLcProf.Stop();
-			PrintToServer(">> Profiler report for: %s: %.2f sec.", "Pending database" , g_hLcProf.Time);
+			PrintToServer(">>> [Localizer] Profiler report for: %s: %.2f sec.", "Pending database" , g_hLcProf.Time);
 		}
-		PrintToServer(">>> Phrases processing is completed.");
-	#endif
+		PrintToServer(">>> [Localizer] Phrases processing is completed.");
+	}
 	
 	RequestFrame(Forward_OnPhrasesProcessingCompleted_Frame);
 }
@@ -942,7 +958,7 @@ void Forward_OnPhrasesProcessingCompleted_Frame()
 			Parser
 ================================================================================*/
 
-void Loc_ReadIndexFile()
+bool Loc_ReadIndexFile()
 {
 	g_hMapLcStamp.Clear();
 	
@@ -961,7 +977,9 @@ void Loc_ReadIndexFile()
 			}
 		}
 		hr.Close();
+		return true;
 	}
+	return false;
 }
 
 void Loc_WriteIndexFile()
@@ -1053,10 +1071,13 @@ void Loc_GetPhraseFiles(char[] search)
 	
 	if( !g_bLcDecodeInProgress )
 	{
-		#if defined LC_PROFILER
-			PrintToServer(">>> Start processing of %i files...", iCount);
-			PrintToServer("Installation mode: %s", Loc_InstallMode_ToString());
-		#endif
+		if( g_bLcProfiler )
+		{
+			PrintToChatAll(">>> [Localizer] Start processing of %i files...", iCount);
+			PrintToServer(">>> [Localizer] Start processing of %i files...", iCount);
+			PrintToServer(">>> [Localizer] Installation mode: %s", Loc_InstallMode_ToString());
+		}
+		g_iTotalFilesToProcess = iCount;
 		Loc_StackProcessingDecode(LC_OP_FLAG_RESET | LC_OP_FLAG_DELAY);
 	}
 }
@@ -1069,14 +1090,14 @@ public Action Timer_Loc_StackProcessingDecode(Handle timer, LC_OP_FLAG flags)
 
 void Loc_StackProcessingDecode(LC_OP_FLAG flags)
 {
+	g_bLcReady = false;
+
 	float time;
 	bool bUpdated;
 	int iFileSize;
 	static float total_time, max_time;
 	static int iCount, total_file_size, max_size;
 	static char sFile[LC_MAX_LANG_FILE_LENGTH];
-	
-	#pragma unused total_file_size, total_time
 	
 	g_bLcDecodeInProgress = true;
 	
@@ -1096,9 +1117,9 @@ void Loc_StackProcessingDecode(LC_OP_FLAG flags)
 	{
 		if( g_hLcStackEncoded.Empty )
 		{
-			#if defined LC_PROFILER
+			if( g_bLcProfiler )
 				Loc_PrintProfiler(iCount, total_file_size, max_size, total_time, max_time, LC_OP_TYPE_DECODE);
-			#endif
+			
 			Loc_StackProcessingCache(LC_OP_FLAG_RESET | LC_OP_FLAG_DELAY);
 			return;
 		}
@@ -1117,6 +1138,8 @@ void Loc_StackProcessingDecode(LC_OP_FLAG flags)
 			if( max_size < iFileSize ) max_size = iFileSize;
 			total_time += g_hLcProf.Time;
 			++ iCount;
+			PrintToChatAll(">>> [Localizer] Decoded file [%i/%i]: %s", iCount, g_iTotalFilesToProcess, sFile);
+			PrintToServer(">>> [Localizer] Decoded file [%i/%i]: %s", iCount, g_iTotalFilesToProcess, sFile);
 		}
 	}
 	CreateTimer(LC_THREAD_WAIT_TIME, Timer_Loc_StackProcessingDecode, LC_OP_FLAG_NONE);
@@ -1137,8 +1160,6 @@ void Loc_StackProcessingCache(LC_OP_FLAG flags)
 	static int iCount, total_file_size, max_size;
 	static char sFile[LC_MAX_LANG_FILE_LENGTH];
 	
-	#pragma unused total_file_size, total_time
-	
 	if( flags & LC_OP_FLAG_RESET ) {
 		total_time = 0.0;
 		max_time = 0.0;
@@ -1156,9 +1177,9 @@ void Loc_StackProcessingCache(LC_OP_FLAG flags)
 		if( g_hLcStackCache.Empty )
 		{
 			g_bLcDecodeInProgress = false;
-			#if defined LC_PROFILER
+			
+			if( g_bLcProfiler )
 				Loc_PrintProfiler(iCount, total_file_size, max_size, total_time, max_time, LC_OP_TYPE_CACHE );
-			#endif
 			
 			if( !g_hLcStackEncoded.Empty )
 			{
@@ -1167,9 +1188,9 @@ void Loc_StackProcessingCache(LC_OP_FLAG flags)
 			else {
 				if( g_iLcInstallMode & LC_INSTALL_MODE_DATABASE )
 				{
-					#if defined LC_PROFILER
+					if( g_bLcProfiler ) {
 						g_hLcProf.Start();
-					#endif
+					}
 					if( !SQL_Loc_InsertBatch(0, "", "", .bFinishPending = true) )
 					{
 						OnPhrasesProcessingCompleted_CallDelayed();
@@ -1206,13 +1227,12 @@ void Loc_StackProcessingCache(LC_OP_FLAG flags)
 	CreateTimer(LC_THREAD_WAIT_TIME, Timer_Loc_StackProcessingCache, LC_OP_FLAG_NONE);
 }
 
-#if defined LC_PROFILER
 void Loc_PrintProfiler(int iCount, int total_file_size, int max_size, float time, float max_time, LC_OP_TYPE op_type)
 {
 	float size_max_mb = max_size / 1024.0 / 1024.0;
 	float size_mb = total_file_size / 1024.0 / 1024.0;
 	float speed = size_mb / time;
-	PrintToServer(">> Profiler report for: %s (%i items, %.1f MB), max file: %.2f MB", op_type == LC_OP_TYPE_DECODE ? "Decode" : "Cache", iCount, size_mb, size_max_mb);
+	PrintToServer(">>> [Localizer] Profiler report for: %s (%i items, %.1f MB), max file: %.2f MB", op_type == LC_OP_TYPE_DECODE ? "Decode" : "Cache", iCount, size_mb, size_max_mb);
 	PrintToServer("avg speed: %.2f MB/sec.", speed);
 	PrintToServer("max time per file: %.2f sec.", max_time);
 	PrintToServer("total time elapsed: %.2f sec.", time);
@@ -1225,7 +1245,6 @@ void Loc_PrintProfiler(int iCount, int total_file_size, int max_size, float time
 		}
 	}
 }
-#endif
 
 bool Loc_CacheFile(char[] sFile, int &iFileSize)
 {
@@ -1403,7 +1422,7 @@ bool Loc_DecodeFile(char[] sFile, int &iFileSize)
 
 bool Loc_ConvertFile_UTF16LE_UTF8(char[] sourceFile, char[] targetFile)
 {
-	//PrintToServer("Decode: %s", sourceFile);
+	//LogError("Decode: %s", sourceFile);
 	
 	bool use_valve_fs = !(g_iLcEngine == Engine_CSGO); // walkaround CSGO engine (SM?) ERROR_HANDLE_EOF bug #1567
 
