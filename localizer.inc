@@ -16,12 +16,13 @@
 #endif
 #define _localizer_included
 
-#define LOCALIZER_VERSION "0.94"
+#define LOCALIZER_VERSION "0.95"
 
 #include <sourcemod>
 #include <sdktools>
 #include <profiler>
 #include <regex>
+#include <stringmapi>
 
 #define LC_USE_SQLITE 1
 
@@ -80,7 +81,7 @@ char LC_TRANSLATION_FILE[] = 		"localizer.phrases.txt";
 #define LC_MAX_PATH_LANG_DECODED	LC_MAX_LANG_FILE_LENGTH+sizeof(LC_RESOURCE_DECODED_DIR)+1
 
 Database 		g_hLcDB;
-StringMap 		g_hMapLcPhrase[LC_MAX_LANG_COUNT], // weird, can't declare dynamic array statically
+StringMapI 		g_hMapLcPhrase[LC_MAX_LANG_COUNT],
 				g_hMapLcStamp,
 				g_hMapLcEnglishFile; // for english ghosts (in CSGO)
 ArrayStack 		g_hLcStackEncoded,
@@ -758,13 +759,13 @@ bool Loc_InitObjects()
 	int count = GetLanguageCount();
 	for( int i = 0; i < count; i++ ) {
 		delete g_hMapLcPhrase[i];
-		g_hMapLcPhrase[i] = new StringMap();
+		g_hMapLcPhrase[i] = new StringMapI();
 	}
 	delete g_hMapLcStamp;
 	delete g_hLcStackEncoded;
 	delete g_hLcStackCache;
-	g_hMapLcStamp = new StringMap();
-	g_hMapLcEnglishFile = new StringMap();
+	g_hMapLcStamp = new StringMapI();
+	g_hMapLcEnglishFile = new StringMapI();
 	g_hLcStackEncoded = new ArrayStack(ByteCountToCells(LC_MAX_LANG_FILE_LENGTH));
 	g_hLcStackCache = new ArrayStack(ByteCountToCells(LC_MAX_LANG_FILE_LENGTH));
 	if( !g_hLcProf )

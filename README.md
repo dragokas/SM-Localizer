@@ -1,6 +1,9 @@
 # SM-Localizer
 **Using intrinsic Valve translation #phrases in SourceMod**
 
+**Dependency**
+ - StringMapI (stringmapi.inc): https://github.com/dragokas/SourceMod-StringMapI
+
 **Readme**
  - Available at AlliedMods: https://forums.alliedmods.net/showthread.php?t=339741
 
