@@ -16,7 +16,7 @@
 #endif
 #define _localizer_included
 
-#define LOCALIZER_VERSION "0.95"
+#define LOCALIZER_VERSION "0.96"
 
 #include <sourcemod>
 #include <sdktools>
@@ -59,7 +59,7 @@ enum LC_CACHE
 	LC_CACHE_RAM	  = 2	// L2 - StringMap
 }
 
-//#define LC_PROFILER // uncomment to measure the performance
+//#define LC_PROFILER // uncomment to always measure the performance at startup
 
 char LC_LANGUAGE_KEY[] =			"Language";
 char LC_RESOURCE_ENCODED_DIR[] =	"resource";
@@ -76,7 +76,7 @@ char LC_TRANSLATION_FILE[] = 		"localizer.phrases.txt";
 #define LC_MAX_TRANSLATION_LENGTH	3072
 #define LC_THREAD_EXECUTION_TIME	0.3
 #define LC_THREAD_WAIT_TIME			0.1
-#define LC_MAX_SIGNAL_WAIT_TIME		60.0
+#define LC_MAX_SIGNAL_WAIT_TIME		600.0
 #define LC_MAX_PATH_LANG_ENCODED	LC_MAX_LANG_FILE_LENGTH+sizeof(LC_RESOURCE_ENCODED_DIR)+1
 #define LC_MAX_PATH_LANG_DECODED	LC_MAX_LANG_FILE_LENGTH+sizeof(LC_RESOURCE_DECODED_DIR)+1
 
@@ -94,7 +94,8 @@ Handle			g_hTimerLcState;
 bool			g_bLcDecodeInProgress,
 				g_bLcIndexChanged,
 				g_bLcReady,
-				g_bLcProfiler;
+				g_bLcProfiler,
+				g_bLcSkipRareFiles;
 int				g_iLcServerLanguage,
 				g_iLcQueueTx,
 				g_iTotalFilesToProcess;
@@ -115,30 +116,32 @@ methodmap Localizer < Handle
 	 * Called whenever new instance of Localizer methodmap is created.
 	 * This will make an installation of Localizer.
 	 *
-	 * @param install_mode	Optional method of installation:
+	 * @param install_mode		Optional method of installation:
 	 *
-	 *						LC_INSTALL_MODE_DATABASE (default)
-	 *							 - saves phrases to a database.
-	 *						LC_INSTALL_MODE_FULLCACHE (experimental)
-	 *							 - pre-caches all phrases making the fastest query, but consuming a lot of memory.
-	 *						LC_INSTALL_MODE_TRANSLATIONFILE (experimental, not fully implemented)
-	 *							 - save phrases to translation file.
-	 *							 - phrases are available via %T %t specifiers only.
-	 *							 - do not use own's Localizer Print* methods within this installation mode.
-	 *						LC_INSTALL_MODE_CUSTOM
-	 *							 - no installation is performed, no objects are initialized at startup.
-	 *							 - it is intended to use with Localizer.Uninstall() method only.
+	 *							LC_INSTALL_MODE_DATABASE (default)
+	 *								 - saves phrases to a database.
+	 *							LC_INSTALL_MODE_FULLCACHE (experimental)
+	 *								 - pre-caches all phrases making the fastest query, but consuming a lot of memory.
+	 *							LC_INSTALL_MODE_TRANSLATIONFILE (experimental, not fully implemented)
+	 *								 - save phrases to translation file.
+	 *								 - phrases are available via %T %t specifiers only.
+	 *								 - do not use own's Localizer Print* methods within this installation mode.
+	 *							LC_INSTALL_MODE_CUSTOM
+	 *								 - no installation is performed, no objects are initialized at startup.
+	 *								 - it is intended to use with Localizer.Uninstall() method only.
 	 *
-	 * @return				New instance of this methodmap.
+	 * @param skip_rare_files	Do not read rarely used translation phrases (often dialogues, like "closecaption_*" files.
+	 *							Increases first initialization overall time a lot.
+	 * @return					New instance of this methodmap.
 	 * 
 	 * @note	For LC_INSTALL_MODE_DATABASE and LC_INSTALL_MODE_TRANSLATIONFILE, installation is shared between plugins.
 	 *			To access the translation functionality as soon as possible, register a hook via Localizer.Delegate_InitCompleted() method.
 	 *			To free the resources use Localizer.Close() method.
 	 *			To uninstall Localizer completely, use Localizer.Uninstall() method.
 	 */
-	public Localizer(LC_INSTALL_MODE install_mode = LC_INSTALL_MODE_DATABASE)
+	public Localizer(LC_INSTALL_MODE install_mode = LC_INSTALL_MODE_DATABASE, bool skip_rare_files = true)
 	{
-		Loc_Init(install_mode);
+		Loc_Init(install_mode, skip_rare_files);
 		return view_as<Localizer>(g_hLcProf);
 	}
 	
@@ -702,7 +705,7 @@ stock char[] Loc_TranslateToLang(char[] phrase, int client = LANG_SERVER, char[]
 ================================================================================*/
 
 //{ #region Initialize
-void Loc_Init(LC_INSTALL_MODE install_mode)
+void Loc_Init(LC_INSTALL_MODE install_mode, bool skip_rare_files)
 {
 	/*
 	// TODO
@@ -721,6 +724,7 @@ void Loc_Init(LC_INSTALL_MODE install_mode)
 	#endif
 	
 	g_iLcInstallMode = install_mode;
+	g_bLcSkipRareFiles = skip_rare_files;
 	g_iLcEngine = GetEngineVersion();
 	g_hCvarLcState = FindConVar(LC_CONVAR_NAME); // inter-plugin sync. mechanism
 	Loc_RegisterCommands();
@@ -1031,6 +1035,13 @@ void Loc_GetPhraseFiles(char[] search)
 							
 							if( n != -1 ) // some text files aren't #prases
 							{
+								if( g_bLcSkipRareFiles )
+								{
+									if( strncmp(sFile, "closecaption_", 13) == 0 )
+									{
+										continue;
+									}
+								}
 								if( strcmp(sFile[n+1], "latam.txt") != 0 &&
 									strcmp(sFile[n+1], "pirate.txt") != 0 )
 								{
@@ -1264,6 +1275,7 @@ bool Loc_CacheFile(char[] sFile, int &iFileSize)
 			if( iOldSize != iFileSize )
 			{
 				shouldParse = true;
+				g_bLcProfiler = true;
 			}
 		}
 		case LC_INSTALL_MODE_FULLCACHE:
